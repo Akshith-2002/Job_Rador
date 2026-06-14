@@ -87,6 +87,29 @@
     </p>
   </div>
 
+  <!-- Resume preview modal -->
+  <div id="previewModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+       onclick="if(event.target===this) closePreview()">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl h-[92vh] flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-slate-200 gap-4">
+        <div class="min-w-0">
+          <div id="previewTitle" class="font-semibold text-slate-900 truncate">Tailored resume</div>
+          <div id="previewSub" class="text-xs text-slate-500 truncate"></div>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <a id="previewPdf" href="#" class="bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 text-xs font-medium px-3 py-1.5 rounded">Download PDF</a>
+          <a id="previewDocx" href="#" class="bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 text-xs font-medium px-3 py-1.5 rounded">Download DOCX</a>
+          <button id="previewRegen" class="text-slate-500 hover:text-slate-800 text-xs border border-slate-200 px-2.5 py-1.5 rounded">↻ Regenerate</button>
+          <button onclick="closePreview()" class="text-slate-400 hover:text-slate-800 text-2xl leading-none px-1">&times;</button>
+        </div>
+      </div>
+      <div class="flex-1 flex min-h-0">
+        <div id="previewNotes" class="w-64 shrink-0 border-r border-slate-200 p-4 overflow-y-auto text-xs text-slate-600 hidden md:block"></div>
+        <iframe id="previewFrame" class="flex-1 bg-slate-100" title="Resume preview"></iframe>
+      </div>
+    </div>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     const state = { role: "all", q: "", minScore: 0, sizeOnly: false, topOnly: false };
@@ -117,10 +140,16 @@
 
     function downloadLinks(id) {
       return `
-        <div class="flex gap-1.5 items-center">
-          <a href="/api/jobs/${id}/resume.pdf" class="bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 text-xs font-medium px-2 py-1 rounded">PDF</a>
-          <a href="/api/jobs/${id}/resume.docx" class="bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 text-xs font-medium px-2 py-1 rounded">DOCX</a>
-          <button onclick="tailorJob(${id}, true)" title="Regenerate" class="text-slate-400 hover:text-slate-700 text-xs px-1">↻</button>
+        <div class="flex flex-col gap-1">
+          <button onclick="openPreview(${id})"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium px-2.5 py-1 rounded">👁 Preview</button>
+          <div class="flex gap-2 items-center text-xs">
+            <a href="/api/jobs/${id}/resume.pdf" class="text-rose-600 hover:underline font-medium">PDF</a>
+            <span class="text-slate-300">·</span>
+            <a href="/api/jobs/${id}/resume.docx" class="text-sky-600 hover:underline font-medium">DOCX</a>
+            <span class="text-slate-300">·</span>
+            <button onclick="tailorJob(${id}, true)" title="Regenerate" class="text-slate-400 hover:text-slate-700">↻</button>
+          </div>
         </div>`;
     }
 
@@ -143,6 +172,7 @@
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || "Failed");
         cell.innerHTML = downloadLinks(id);
+        openPreview(id); // show it right after tailoring
       } catch (e) {
         cell.innerHTML = `<button onclick="tailorJob(${id})"
           class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg"
@@ -150,6 +180,51 @@
       }
     }
     window.tailorJob = tailorJob;
+
+    let previewId = null;
+    async function openPreview(id) {
+      previewId = id;
+      const modal = document.getElementById("previewModal");
+      document.getElementById("previewPdf").href = `/api/jobs/${id}/resume.pdf`;
+      document.getElementById("previewDocx").href = `/api/jobs/${id}/resume.docx`;
+      document.getElementById("previewFrame").src = `/api/jobs/${id}/resume.pdf?inline=1#toolbar=1`;
+      const notes = document.getElementById("previewNotes");
+      notes.innerHTML = `<div class="text-slate-400">Loading…</div>`;
+      modal.classList.remove("hidden");
+      document.body.style.overflow = "hidden";
+      try {
+        const data = await fetch(`/api/jobs/${id}/resume.json`).then((r) => r.json());
+        document.getElementById("previewTitle").textContent = data.resume.title || "Tailored resume";
+        document.getElementById("previewSub").textContent = `${data.job.title} · ${data.job.company}`;
+        notes.innerHTML =
+          `<div class="font-semibold text-slate-700 mb-2">Why this version</div>
+           <ul class="list-disc ml-4 space-y-1.5">${(data.resume.tailoringNotes || [])
+             .map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`;
+      } catch (e) {
+        notes.innerHTML = `<div class="text-rose-500">Couldn't load tailoring notes.</div>`;
+      }
+    }
+    function closePreview() {
+      document.getElementById("previewModal").classList.add("hidden");
+      document.getElementById("previewFrame").src = "about:blank";
+      document.body.style.overflow = "";
+      previewId = null;
+    }
+    document.getElementById("previewRegen").addEventListener("click", async () => {
+      if (previewId == null) return;
+      const notes = document.getElementById("previewNotes");
+      notes.innerHTML = `<div class="text-slate-400">Regenerating…</div>`;
+      document.getElementById("previewFrame").src = "about:blank";
+      try {
+        await fetch(`/api/jobs/${previewId}/tailor?force=1`, { method: "POST" });
+        openPreview(previewId);
+      } catch (e) {
+        notes.innerHTML = `<div class="text-rose-500">Regeneration failed.</div>`;
+      }
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePreview(); });
+    window.openPreview = openPreview;
+    window.closePreview = closePreview;
 
     async function load() {
       const params = new URLSearchParams();

@@ -113,8 +113,9 @@ async function main() {
       const out = await ensureTailored(Number(req.params.id));
       if (!out) return res.status(404).send("Job not found");
       const fname = safeFile(`${out.resume.name}_${out.job.company}.pdf`);
+      const disposition = req.query.inline === "1" ? "inline" : "attachment";
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${fname}"`);
+      res.setHeader("Content-Disposition", `${disposition}; filename="${fname}"`);
       const doc = buildResumePdf(out.resume);
       doc.pipe(res);
       doc.end();
@@ -139,6 +140,21 @@ async function main() {
     } catch (e: any) {
       console.error("docx error:", e?.message || e);
       res.status(500).send(e?.message || "Failed to build DOCX");
+    }
+  });
+
+  // Tailored resume as JSON (for the in-dashboard preview: notes, title, etc.)
+  app.get("/api/jobs/:id/resume.json", async (req, res) => {
+    try {
+      const out = await ensureTailored(Number(req.params.id));
+      if (!out) return res.status(404).json({ error: "Job not found" });
+      res.json({
+        job: { id: out.job.id, title: out.job.title, company: out.job.company },
+        resume: out.resume,
+      });
+    } catch (e: any) {
+      console.error("resume.json error:", e?.message || e);
+      res.status(500).json({ error: e?.message || "Failed to load resume" });
     }
   });
 
