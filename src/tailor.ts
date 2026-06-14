@@ -119,12 +119,13 @@ You tailor a candidate's existing resume to a specific job description for ATS a
 
 HARD RULES:
 - Use ONLY the facts in the MASTER RESUME. Never invent employers, titles, dates, metrics, tools, or projects.
-- You MAY reorder, reword, re-emphasize, and select the most relevant content; you MAY drop the least relevant projects/skills to keep it focused and roughly one page.
+- MUST FIT ON ONE PAGE. Be ruthless about brevity — select the most relevant content and drop the rest.
+- You MAY reorder, reword, re-emphasize, and select the most relevant content.
 - Mirror the job description's language and keywords where the candidate genuinely has the experience (helps ATS).
-- Rewrite the summary (3-4 sentences) to speak directly to this role.
-- Reorder and trim coreSkills so the most JD-relevant skills come first; keep ~14-18 items.
-- Keep experience bullets achievement-focused; you may re-emphasize the parts of each bullet most relevant to the JD, but keep the underlying facts and metrics intact.
-- Order projects by relevance to this JD; keep the 3-5 most relevant.
+- Rewrite the summary as 2-3 tight sentences (~45 words max) speaking directly to this role.
+- Reorder and trim coreSkills so the most JD-relevant skills come first; keep 12-14 items only.
+- Experience: keep the most relevant 4-5 bullets, each ONE line (~22 words max), achievement-focused, facts/metrics intact.
+- Projects: keep ONLY the 3 most relevant to this JD, each with ONE short bullet (~20 words max).
 - "title" should be the candidate headline aligned to the target role (e.g. "Technical Project Manager").
 - "tailoringNotes": 3-5 short bullets explaining what you emphasized for THIS job (for the candidate's eyes only; not printed on the resume).
 Return strictly the JSON schema provided.`;

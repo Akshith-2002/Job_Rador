@@ -11,7 +11,7 @@ import * as dotenv from "dotenv";
 import { AppDataSource } from "./data-source";
 import { Job } from "./entity/Job";
 import { tailorResume, TailoredResume } from "./tailor";
-import { buildResumePdf } from "./render/resumePdf";
+import { buildResumePdfBuffer } from "./render/resumePdf";
 import { buildResumeDocx } from "./render/resumeDocx";
 
 dotenv.config();
@@ -114,11 +114,10 @@ async function main() {
       if (!out) return res.status(404).send("Job not found");
       const fname = safeFile(`${out.resume.name}_${out.job.company}.pdf`);
       const disposition = req.query.inline === "1" ? "inline" : "attachment";
+      const buf = await buildResumePdfBuffer(out.resume);
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", `${disposition}; filename="${fname}"`);
-      const doc = buildResumePdf(out.resume);
-      doc.pipe(res);
-      doc.end();
+      res.send(buf);
     } catch (e: any) {
       console.error("pdf error:", e?.message || e);
       res.status(500).send(e?.message || "Failed to build PDF");
