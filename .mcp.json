@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "apify": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "set -a; . /Users/akshithkumaryv/Downloads/job_scrapper/.env; set +a; exec npx -y @apify/actors-mcp-server@latest --tools actors,docs,apify/rag-web-browser"
+      ]
+    }
+  }
+}

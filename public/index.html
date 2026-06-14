@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Job Radar — Akshith</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    .reasons-row td { background: #fafafa; }
+    ::-webkit-scrollbar { height: 8px; width: 8px; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+  <div class="max-w-7xl mx-auto px-4 py-8">
+
+    <!-- Header -->
+    <header class="mb-6">
+      <h1 class="text-2xl font-bold text-slate-900">Job Radar</h1>
+      <p class="text-sm text-slate-500">
+        Technical Business Analyst &amp; Technical Project Manager roles · India · last 7 days ·
+        ranked by fit to your resume
+      </p>
+    </header>
+
+    <!-- Stats -->
+    <section id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></section>
+
+    <!-- Filters -->
+    <section class="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex flex-wrap gap-4 items-end">
+      <div class="flex-1 min-w-[200px]">
+        <label class="block text-xs font-medium text-slate-500 mb-1">Search</label>
+        <input id="q" type="text" placeholder="company, title, location…"
+          class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">Role</label>
+        <select id="role" class="border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All roles</option>
+          <option value="Technical Business Analyst">Business Analyst</option>
+          <option value="Technical Project Manager">Project Manager</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">Min fit <span id="minScoreLabel">0</span></label>
+        <input id="minScore" type="range" min="0" max="10" step="0.5" value="0" class="w-40 accent-indigo-600" />
+      </div>
+      <label class="flex items-center gap-2 text-sm cursor-pointer select-none">
+        <input id="sizeOnly" type="checkbox" class="accent-indigo-600 w-4 h-4" />
+        50–5000 employees
+      </label>
+      <label class="flex items-center gap-2 text-sm cursor-pointer select-none">
+        <input id="topOnly" type="checkbox" class="accent-amber-500 w-4 h-4" />
+        ⭐ Apply today
+      </label>
+      <button id="reset" class="ml-auto text-sm text-slate-500 hover:text-slate-800 underline">Reset</button>
+    </section>
+
+    <!-- Table -->
+    <section class="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-slate-100 text-slate-500 text-xs uppercase tracking-wide">
+            <tr>
+              <th class="px-3 py-3 text-left w-10">#</th>
+              <th class="px-3 py-3 text-left w-16">Fit</th>
+              <th class="px-3 py-3 text-left">Role</th>
+              <th class="px-3 py-3 text-left">Company</th>
+              <th class="px-3 py-3 text-left">Size</th>
+              <th class="px-3 py-3 text-left">Location</th>
+              <th class="px-3 py-3 text-left">Seniority</th>
+              <th class="px-3 py-3 text-left">Posted</th>
+              <th class="px-3 py-3 text-left">Salary</th>
+              <th class="px-3 py-3 text-left w-20">Apply</th>
+              <th class="px-3 py-3 text-left w-44">Tailored resume</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div id="empty" class="hidden p-8 text-center text-slate-400">No jobs match these filters.</div>
+    </section>
+
+    <p class="text-xs text-slate-400 mt-4">
+      Click any row to see why it scored the way it did. Data scraped via Apify · stored in Postgres.
+    </p>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = { role: "all", q: "", minScore: 0, sizeOnly: false, topOnly: false };
+
+    function fitBadge(s) {
+      let cls = "bg-slate-200 text-slate-600";
+      if (s >= 8) cls = "bg-emerald-100 text-emerald-700";
+      else if (s >= 6.5) cls = "bg-indigo-100 text-indigo-700";
+      else if (s >= 5) cls = "bg-amber-100 text-amber-700";
+      return `<span class="inline-flex items-center justify-center font-semibold rounded-md px-2 py-1 ${cls}">${s.toFixed(1)}</span>`;
+    }
+
+    function sizePill(n, match) {
+      if (n == null) return `<span class="text-slate-400">—</span>`;
+      const cls = match ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200";
+      return `<span class="text-xs border rounded-full px-2 py-0.5 ${cls}">${n.toLocaleString()}</span>`;
+    }
+
+    function esc(s) { return (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+    function fmtDate(d) {
+      if (!d) return "—";
+      const dt = new Date(d);
+      const days = Math.round((Date.now() - dt.getTime()) / 86400000);
+      const label = days <= 0 ? "today" : days === 1 ? "1d ago" : `${days}d ago`;
+      return `<span title="${d}">${label}</span>`;
+    }
+
+    function downloadLinks(id) {
+      return `
+        <div class="flex gap-1.5 items-center">
+          <a href="/api/jobs/${id}/resume.pdf" class="bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 text-xs font-medium px-2 py-1 rounded">PDF</a>
+          <a href="/api/jobs/${id}/resume.docx" class="bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 text-xs font-medium px-2 py-1 rounded">DOCX</a>
+          <button onclick="tailorJob(${id}, true)" title="Regenerate" class="text-slate-400 hover:text-slate-700 text-xs px-1">↻</button>
+        </div>`;
+    }
+
+    function resumeCell(j) {
+      if (j.isTailored) return downloadLinks(j.id);
+      return `<button onclick="tailorJob(${j.id})"
+        class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg">✨ Tailor</button>`;
+    }
+
+    async function tailorJob(id, force = false) {
+      const cell = document.getElementById("resume-cell-" + id);
+      if (!cell) return;
+      cell.innerHTML = `<span class="text-xs text-slate-400 inline-flex items-center gap-1">
+        <svg class="animate-spin h-3.5 w-3.5 text-indigo-500" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+        </svg>Tailoring…</span>`;
+      try {
+        const r = await fetch(`/api/jobs/${id}/tailor${force ? "?force=1" : ""}`, { method: "POST" });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "Failed");
+        cell.innerHTML = downloadLinks(id);
+      } catch (e) {
+        cell.innerHTML = `<button onclick="tailorJob(${id})"
+          class="bg-rose-600 hover:bg-rose-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg"
+          title="${(e.message || "").replace(/"/g, "'")}">⚠ Retry</button>`;
+      }
+    }
+    window.tailorJob = tailorJob;
+
+    async function load() {
+      const params = new URLSearchParams();
+      if (state.role !== "all") params.set("role", state.role);
+      if (state.q) params.set("q", state.q);
+      if (state.minScore > 0) params.set("minScore", state.minScore);
+      if (state.sizeOnly) params.set("sizeOnly", "true");
+      if (state.topOnly) params.set("topOnly", "true");
+
+      const [jobs, stats] = await Promise.all([
+        fetch("/api/jobs?" + params).then(r => r.json()),
+        fetch("/api/stats").then(r => r.json()),
+      ]);
+      renderStats(stats);
+      renderRows(jobs);
+    }
+
+    function renderStats(s) {
+      const card = (label, val, accent) =>
+        `<div class="bg-white border border-slate-200 rounded-xl p-4">
+           <div class="text-2xl font-bold ${accent}">${val}</div>
+           <div class="text-xs text-slate-500 mt-1">${label}</div>
+         </div>`;
+      $("stats").innerHTML =
+        card("Jobs scraped", s.total, "text-slate-900") +
+        card("In 50–5000 band", s.inBand, "text-emerald-600") +
+        card("⭐ Apply today", s.top, "text-amber-600") +
+        card("Avg fit score", s.avgScore, "text-indigo-600");
+    }
+
+    function renderRows(jobs) {
+      const tb = $("rows");
+      tb.innerHTML = "";
+      $("empty").classList.toggle("hidden", jobs.length > 0);
+
+      jobs.forEach((j, i) => {
+        const tr = document.createElement("tr");
+        tr.className = "border-t border-slate-100 hover:bg-slate-50 cursor-pointer " +
+          (j.topPick ? "bg-amber-50/60" : "");
+        tr.innerHTML = `
+          <td class="px-3 py-3 text-slate-400">${i + 1}</td>
+          <td class="px-3 py-3">${fitBadge(j.fitScore)}</td>
+          <td class="px-3 py-3">
+            <div class="font-medium text-slate-900">${j.topPick ? "⭐ " : ""}${esc(j.title)}</div>
+            <div class="text-xs text-slate-400">${esc(j.searchTitle)}</div>
+          </td>
+          <td class="px-3 py-3">
+            <div class="flex items-center gap-2">
+              ${j.companyLogo ? `<img src="${esc(j.companyLogo)}" class="w-6 h-6 rounded object-contain bg-white border border-slate-100" />` : ""}
+              <span>${esc(j.company)}</span>
+            </div>
+          </td>
+          <td class="px-3 py-3">${sizePill(j.employeeCount, j.sizeMatch)}</td>
+          <td class="px-3 py-3 text-slate-600">${esc(j.location) || "—"}</td>
+          <td class="px-3 py-3 text-slate-500 text-xs">${esc(j.seniority) || "—"}</td>
+          <td class="px-3 py-3 text-slate-500 text-xs">${fmtDate(j.postedDate)}</td>
+          <td class="px-3 py-3 text-slate-500 text-xs">${esc(j.salary) || "—"}</td>
+          <td class="px-3 py-3">
+            <a href="${esc(j.applyUrl || j.jobUrl)}" target="_blank" rel="noopener"
+               onclick="event.stopPropagation()"
+               class="inline-block bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg">Apply →</a>
+          </td>
+          <td class="px-3 py-3" id="resume-cell-${j.id}" onclick="event.stopPropagation()">
+            ${resumeCell(j)}
+          </td>`;
+
+        const detail = document.createElement("tr");
+        detail.className = "reasons-row hidden";
+        detail.innerHTML = `
+          <td colspan="11" class="px-6 py-3 text-xs text-slate-600">
+            <div class="font-medium text-slate-700 mb-1">Why this score</div>
+            <ul class="list-disc ml-5 space-y-0.5">
+              ${(j.matchReasons || []).map(r => `<li>${esc(r)}</li>`).join("") || "<li>No specific signals.</li>"}
+            </ul>
+          </td>`;
+        tr.addEventListener("click", () => detail.classList.toggle("hidden"));
+
+        tb.appendChild(tr);
+        tb.appendChild(detail);
+      });
+    }
+
+    // wire filters
+    $("q").addEventListener("input", (e) => { state.q = e.target.value; debounce(load); });
+    $("role").addEventListener("change", (e) => { state.role = e.target.value; load(); });
+    $("minScore").addEventListener("input", (e) => {
+      state.minScore = Number(e.target.value); $("minScoreLabel").textContent = e.target.value; load();
+    });
+    $("sizeOnly").addEventListener("change", (e) => { state.sizeOnly = e.target.checked; load(); });
+    $("topOnly").addEventListener("change", (e) => { state.topOnly = e.target.checked; load(); });
+    $("reset").addEventListener("click", () => {
+      Object.assign(state, { role: "all", q: "", minScore: 0, sizeOnly: false, topOnly: false });
+      $("q").value = ""; $("role").value = "all"; $("minScore").value = 0;
+      $("minScoreLabel").textContent = "0"; $("sizeOnly").checked = false; $("topOnly").checked = false;
+      load();
+    });
+
+    let t; function debounce(fn) { clearTimeout(t); t = setTimeout(fn, 250); }
+
+    load();
+  </script>
+</body>
+</html>
