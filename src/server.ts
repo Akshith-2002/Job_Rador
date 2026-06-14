@@ -45,13 +45,14 @@ async function main() {
 
   // GET /api/jobs?role=&minScore=&sizeOnly=&topOnly=&q=
   app.get("/api/jobs", async (req, res) => {
-    const { role, minScore, sizeOnly, topOnly, q } = req.query as Record<string, string>;
+    const { role, minScore, sizeOnly, topOnly, status, q } = req.query as Record<string, string>;
     let jobs = await repo.find({ order: { fitScore: "DESC" } });
 
     if (role && role !== "all") jobs = jobs.filter((j) => j.searchTitle === role);
     if (minScore) jobs = jobs.filter((j) => j.fitScore >= Number(minScore));
     if (sizeOnly === "true") jobs = jobs.filter((j) => j.sizeMatch);
     if (topOnly === "true") jobs = jobs.filter((j) => j.topPick);
+    if (status && status !== "all") jobs = jobs.filter((j) => (j.status || "new") === status);
     if (q) {
       const s = q.toLowerCase();
       jobs = jobs.filter((j) =>
@@ -78,8 +79,24 @@ async function main() {
       matchReasons: j.matchReasons,
       topPick: j.topPick,
       isTailored: !!j.tailoredResume,
+      status: j.status || "new",
     }));
     res.json(dto);
+  });
+
+  // Update application status: new | applied | no_response | rejected | selected
+  const ALLOWED_STATUS = ["new", "applied", "no_response", "rejected", "selected"];
+  app.patch("/api/jobs/:id/status", async (req, res) => {
+    const { status } = req.body || {};
+    if (!ALLOWED_STATUS.includes(status)) {
+      return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUS.join(", ")}` });
+    }
+    const job = await repo.findOne({ where: { id: Number(req.params.id) } });
+    if (!job) return res.status(404).json({ error: "Job not found" });
+    job.status = status;
+    job.statusUpdatedAt = new Date();
+    await repo.save(job);
+    res.json({ ok: true, status });
   });
 
   app.get("/api/stats", async (_req, res) => {
@@ -87,7 +104,8 @@ async function main() {
     const inBand = await repo.count({ where: { sizeMatch: true } });
     const top = await repo.count({ where: { topPick: true } });
     const avg = await repo.createQueryBuilder("j").select("AVG(j.fitScore)", "avg").getRawOne();
-    res.json({ total, inBand, top, avgScore: Number(avg?.avg || 0).toFixed(1) });
+    const applied = await repo.createQueryBuilder("j").where("j.status != :s", { s: "new" }).getCount();
+    res.json({ total, inBand, top, avgScore: Number(avg?.avg || 0).toFixed(1), applied });
   });
 
   // Generate (or regenerate with ?force=1) a tailored resume for a job.

@@ -25,7 +25,7 @@
     </header>
 
     <!-- Stats -->
-    <section id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></section>
+    <section id="stats" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6"></section>
 
     <!-- Filters -->
     <section class="bg-white border border-slate-200 rounded-xl p-4 mb-5 flex flex-wrap gap-4 items-end">
@@ -40,6 +40,17 @@
           <option value="all">All roles</option>
           <option value="Technical Business Analyst">Business Analyst</option>
           <option value="Technical Project Manager">Project Manager</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-500 mb-1">Status</label>
+        <select id="statusFilter" class="border border-slate-300 rounded-lg px-3 py-2 text-sm">
+          <option value="all">All statuses</option>
+          <option value="new">To apply</option>
+          <option value="applied">Applied</option>
+          <option value="no_response">No response</option>
+          <option value="rejected">Rejected</option>
+          <option value="selected">Selected</option>
         </select>
       </div>
       <div>
@@ -65,6 +76,7 @@
             <tr>
               <th class="px-3 py-3 text-left w-10">#</th>
               <th class="px-3 py-3 text-left w-16">Fit</th>
+              <th class="px-3 py-3 text-left w-28">Status</th>
               <th class="px-3 py-3 text-left">Role</th>
               <th class="px-3 py-3 text-left">Company</th>
               <th class="px-3 py-3 text-left">Size</th>
@@ -112,7 +124,7 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const state = { role: "all", q: "", minScore: 0, sizeOnly: false, topOnly: false };
+    const state = { role: "all", q: "", minScore: 0, sizeOnly: false, topOnly: false, status: "all" };
 
     function fitBadge(s) {
       let cls = "bg-slate-200 text-slate-600";
@@ -137,6 +149,46 @@
       const label = days <= 0 ? "today" : days === 1 ? "1d ago" : `${days}d ago`;
       return `<span title="${d}">${label}</span>`;
     }
+
+    const STATUS_OPTS = [
+      ["new", "To apply"],
+      ["applied", "Applied"],
+      ["no_response", "No response"],
+      ["rejected", "Rejected"],
+      ["selected", "Selected"],
+    ];
+    function statusClass(s) {
+      return ({
+        new: "bg-slate-50 text-slate-600 border-slate-300",
+        applied: "bg-blue-50 text-blue-700 border-blue-300",
+        no_response: "bg-amber-50 text-amber-700 border-amber-300",
+        rejected: "bg-rose-50 text-rose-700 border-rose-300",
+        selected: "bg-emerald-50 text-emerald-700 border-emerald-300",
+      })[s] || "bg-slate-50 text-slate-600 border-slate-300";
+    }
+    function statusSelect(j) {
+      const s = j.status || "new";
+      return `<select onchange="setStatus(${j.id}, this.value, this)" onclick="event.stopPropagation()"
+        class="text-xs font-medium border rounded-md px-1.5 py-1 cursor-pointer focus:outline-none ${statusClass(s)}">
+        ${STATUS_OPTS.map(([v, l]) => `<option value="${v}" ${s === v ? "selected" : ""}>${l}</option>`).join("")}
+      </select>`;
+    }
+    async function setStatus(id, status, el) {
+      el.className = `text-xs font-medium border rounded-md px-1.5 py-1 cursor-pointer focus:outline-none ${statusClass(status)}`;
+      el.style.outline = "";
+      try {
+        const r = await fetch(`/api/jobs/${id}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status }),
+        });
+        if (!r.ok) throw new Error("save failed");
+        fetch("/api/stats").then((r) => r.json()).then(renderStats);
+      } catch (e) {
+        el.style.outline = "2px solid #ef4444"; // flag a failed save
+      }
+    }
+    window.setStatus = setStatus;
 
     function downloadLinks(id) {
       return `
@@ -233,6 +285,7 @@
       if (state.minScore > 0) params.set("minScore", state.minScore);
       if (state.sizeOnly) params.set("sizeOnly", "true");
       if (state.topOnly) params.set("topOnly", "true");
+      if (state.status !== "all") params.set("status", state.status);
 
       const [jobs, stats] = await Promise.all([
         fetch("/api/jobs?" + params).then(r => r.json()),
@@ -252,6 +305,7 @@
         card("Jobs scraped", s.total, "text-slate-900") +
         card("In 50–5000 band", s.inBand, "text-emerald-600") +
         card("⭐ Apply today", s.top, "text-amber-600") +
+        card("Tracked / applied", s.applied ?? 0, "text-blue-600") +
         card("Avg fit score", s.avgScore, "text-indigo-600");
     }
 
@@ -267,6 +321,7 @@
         tr.innerHTML = `
           <td class="px-3 py-3 text-slate-400">${i + 1}</td>
           <td class="px-3 py-3">${fitBadge(j.fitScore)}</td>
+          <td class="px-3 py-3" onclick="event.stopPropagation()">${statusSelect(j)}</td>
           <td class="px-3 py-3">
             <div class="font-medium text-slate-900">${j.topPick ? "⭐ " : ""}${esc(j.title)}</div>
             <div class="text-xs text-slate-400">${esc(j.searchTitle)}</div>
@@ -294,7 +349,7 @@
         const detail = document.createElement("tr");
         detail.className = "reasons-row hidden";
         detail.innerHTML = `
-          <td colspan="11" class="px-6 py-3 text-xs text-slate-600">
+          <td colspan="12" class="px-6 py-3 text-xs text-slate-600">
             <div class="font-medium text-slate-700 mb-1">Why this score</div>
             <ul class="list-disc ml-5 space-y-0.5">
               ${(j.matchReasons || []).map(r => `<li>${esc(r)}</li>`).join("") || "<li>No specific signals.</li>"}
@@ -310,15 +365,17 @@
     // wire filters
     $("q").addEventListener("input", (e) => { state.q = e.target.value; debounce(load); });
     $("role").addEventListener("change", (e) => { state.role = e.target.value; load(); });
+    $("statusFilter").addEventListener("change", (e) => { state.status = e.target.value; load(); });
     $("minScore").addEventListener("input", (e) => {
       state.minScore = Number(e.target.value); $("minScoreLabel").textContent = e.target.value; load();
     });
     $("sizeOnly").addEventListener("change", (e) => { state.sizeOnly = e.target.checked; load(); });
     $("topOnly").addEventListener("change", (e) => { state.topOnly = e.target.checked; load(); });
     $("reset").addEventListener("click", () => {
-      Object.assign(state, { role: "all", q: "", minScore: 0, sizeOnly: false, topOnly: false });
+      Object.assign(state, { role: "all", q: "", minScore: 0, sizeOnly: false, topOnly: false, status: "all" });
       $("q").value = ""; $("role").value = "all"; $("minScore").value = 0;
       $("minScoreLabel").textContent = "0"; $("sizeOnly").checked = false; $("topOnly").checked = false;
+      $("statusFilter").value = "all";
       load();
     });
 

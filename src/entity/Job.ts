@@ -83,6 +83,13 @@ export class Job {
   @Column({ type: "boolean", default: false })
   topPick!: boolean; // flagged "apply today"
 
+  // Application tracking: new | applied | no_response | rejected | selected
+  @Column({ type: "varchar", default: "new" })
+  status!: string;
+
+  @Column({ type: "timestamptz", nullable: true })
+  statusUpdatedAt!: Date | null;
+
   @Column({ type: "jsonb", nullable: true })
   raw!: any;
 
